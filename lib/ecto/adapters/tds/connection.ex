@@ -206,23 +206,23 @@ if Code.ensure_loaded?(Tds) do
     def insert(prefix, table, header, rows, on_conflict, returning, placeholders) do
       counter_offset = length(placeholders) + 1
       [] = on_conflict(on_conflict, header)
-      returning = returning(returning, "INSERTED")
+      {ret_top, ret_mid, ret_bottom} = returning_mssql(table, returning)
 
       values =
         if header == [] do
-          [returning, " DEFAULT VALUES"]
+          [ret_mid, " DEFAULT VALUES"]
         else
           [
             ?\s,
             ?(,
             quote_names(header),
-            ?),
-            returning |
+            ") ",
+            ret_mid |
             insert_all(rows, counter_offset)
           ]
         end
 
-      ["INSERT INTO ", quote_table(prefix, table), values]
+      [ret_top, "INSERT INTO ", quote_table(prefix, table), values, "; ", ret_bottom]
     end
 
     defp on_conflict({:raise, _, []}, _header) do
@@ -947,6 +947,23 @@ if Code.ensure_loaded?(Tds) do
             _ -> error!(query, "MSSQL can only return table #{verb} columns")
           end)
       ]
+
+    defp returning_mssql(_, []), do: {[], [], []}
+
+    defp returning_mssql(table, returning) when is_list(returning) do
+      table_id = "#{table}ID"
+      top = ["SET NOCOUNT ON; DECLARE @generated_keys table([#{table_id}] int); "]
+      mid = ["OUTPUT INSERTED.[#{table_id}] INTO @generated_keys "]
+      fields = intersperse_map(returning, ", ", &["t", ?., quote_name(&1)])
+      bottom = [
+        "SELECT ", fields, " ",
+        "FROM @generated_keys AS g ",
+        "INNER JOIN [", table, "] AS t ",
+        "ON g.[", table_id, "] = t.[", table_id, "] ",
+        "WHERE @@ROWCOUNT > 0"
+      ]
+      {top, mid, bottom}
+    end
 
     defp create_names(%{sources: sources}, as_prefix) do
       create_names(sources, 0, tuple_size(sources), as_prefix) |> List.to_tuple()
