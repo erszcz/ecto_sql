@@ -206,7 +206,7 @@ if Code.ensure_loaded?(Tds) do
     def insert(prefix, table, header, rows, on_conflict, returning, placeholders) do
       counter_offset = length(placeholders) + 1
       [] = on_conflict(on_conflict, header)
-      {ret_top, ret_mid, ret_bottom} = returning_mssql(table, returning)
+      {ret_top, ret_mid, ret_bottom} = returning_insert(table, returning)
 
       values =
         if header == [] do
@@ -948,9 +948,9 @@ if Code.ensure_loaded?(Tds) do
           end)
       ]
 
-    defp returning_mssql(_, []), do: {[], [], []}
+    defp returning_insert(_, []), do: {[], [], []}
 
-    defp returning_mssql(table, returning) when is_list(returning) do
+    defp returning_insert(table, returning) when is_list(returning) do
       table_id = "#{table}ID"
       top = ["SET NOCOUNT ON; DECLARE @generated_keys table([#{table_id}] int); "]
       mid = ["OUTPUT INSERTED.[#{table_id}] INTO @generated_keys "]
